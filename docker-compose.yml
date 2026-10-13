@@ -41,14 +41,36 @@ services:
     depends_on:
       - consul
 
+  orders:
+      build:
+        context: ./order_service
+      container_name: orders
+      environment:
+        INSTANCE_NAME: orders
+        PORT: 8000
+        CONSUL_URL: http://consul:8500
+      depends_on:
+        - consul
+
   nginx:
     image: nginx:alpine
     container_name: nginx
     ports:
-      - "8080:80"
+      - "8081:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - auth
       - catalog-1
       - catalog-2
+
+  graphql:
+    build:
+      context: ./graphql_gateway
+    container_name: graphql
+    environment:
+      ORDERS_URL: http://orders:8000
+      CATALOG_URL: http://catalog-1:8000
+    depends_on:
+      - orders
+      - catalog-1
