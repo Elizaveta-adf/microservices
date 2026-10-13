@@ -63,3 +63,14 @@ services:
       - auth
       - catalog-1
       - catalog-2
+
+  graphql:
+    build:
+      context: ./graphql_gateway
+    container_name: graphql
+    environment:
+      ORDERS_URL: http://orders:8000
+      CATALOG_URL: http://catalog-1:8000
+    depends_on:
+      - orders
+      - catalog-1
