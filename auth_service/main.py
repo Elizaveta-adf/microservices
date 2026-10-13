@@ -1,14 +1,22 @@
+
 import os
 import time
 
 import jwt
 import requests
 from fastapi import FastAPI, HTTPException, Header
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
 
 
-app = FastAPI(title="Auth Service")
+app = FastAPI(
+    title="Auth Service",
+    description="REST API для регистрации и аутентификации пользователей",
+    version="1.0.0",
+    openapi_version="3.1.0",
+    docs_url="/docs",
+    root_path="/auth"
+)
 
 # In-memory хранилище пользователей
 users = {}
@@ -28,7 +36,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 class UserData(BaseModel):
-    username: str
+    email: EmailStr
     password: str
 
 
@@ -78,9 +86,14 @@ def shutdown_event():
     deregister_from_consul()
 
 
-@app.post("/register")
+@app.post(
+    "/api/auth/register",
+    tags=["Auth"],
+    summary="Регистрация пользователя"
+)
+@app.post("/register", include_in_schema=False)
 def register(user: UserData):
-    if user.username in users:
+    if user.email in users:
         raise HTTPException(
             status_code=400,
             detail="User already exists"
@@ -88,25 +101,30 @@ def register(user: UserData):
 
     hashed_password = pwd_context.hash(user.password)
 
-    users[user.username] = {
-        "username": user.username,
+    users[user.email] = {
+        "email": user.email,
         "password": hashed_password
     }
 
     return {
         "message": "User registered successfully",
-        "username": user.username
+        "email": user.email
     }
 
 
-@app.post("/login")
+@app.post(
+    "/api/auth/login",
+    tags=["Auth"],
+    summary="Аутентификация пользователя"
+)
+@app.post("/login", include_in_schema=False)
 def login(user: UserData):
-    saved_user = users.get(user.username)
+    saved_user = users.get(user.email)
 
     if not saved_user:
         raise HTTPException(
             status_code=401,
-            detail="Invalid username or password"
+            detail="Invalid email or password"
         )
 
     if not pwd_context.verify(
@@ -115,11 +133,11 @@ def login(user: UserData):
     ):
         raise HTTPException(
             status_code=401,
-            detail="Invalid username or password"
+            detail="Invalid email or password"
         )
 
     token = jwt.encode(
-        {"sub": user.username},
+        {"sub": user.email},
         SECRET_KEY,
         algorithm=ALGORITHM
     )
@@ -130,7 +148,11 @@ def login(user: UserData):
     }
 
 
-@app.get("/me")
+@app.get(
+    "/me",
+    tags=["Auth"],
+    summary="Получение данных текущего пользователя"
+)
 def me(authorization: str = Header(None)):
     if authorization is None:
         raise HTTPException(
@@ -153,16 +175,16 @@ def me(authorization: str = Header(None)):
             algorithms=[ALGORITHM]
         )
 
-        username = payload.get("sub")
+        email = payload.get("sub")
 
-        if username is None:
+        if email is None:
             raise HTTPException(
                 status_code=401,
                 detail="Invalid token"
             )
 
         return {
-            "username": username
+            "email": email
         }
 
     except jwt.InvalidTokenError:
