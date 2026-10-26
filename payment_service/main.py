@@ -2,6 +2,8 @@ import json
 import os
 import time
 import uuid
+import threading
+from grpc_server import serve
 
 import pika
 
@@ -91,4 +93,5 @@ def main():
 
 
 if __name__ == "__main__":
+    threading.Thread(target=serve, daemon=True).start()
     main()
