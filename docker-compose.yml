@@ -104,3 +104,10 @@ services:
       RABBITMQ_HOST: rabbitmq
     depends_on:
       - rabbitmq
+
+  payment-client:
+    build:
+      context: ./payment_client
+    container_name: payment-client
+    depends_on:
+      - payment
