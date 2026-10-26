@@ -1,21 +1,14 @@
-
 import json
 import os
 import time
 import threading
+from contextlib import asynccontextmanager
 
 import pika
 import requests
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from contextlib import asynccontextmanager
 
-
-app = FastAPI(
-    title="Order Service",
-    description="REST API для управления заказами и реализации Saga",
-    version="1.0.0"
-)
 
 SERVICE_ID = os.getenv("INSTANCE_NAME", "orders")
 PORT = int(os.getenv("PORT", "8000"))
@@ -267,8 +260,9 @@ def consume_payment_events():
             if connection is not None and connection.is_open:
                 connection.close()
 
-@app.on_event("startup")
-def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Действия при запуске сервиса
     register_in_consul()
     setup_rabbitmq()
 
@@ -278,10 +272,19 @@ def startup_event():
     )
     consumer_thread.start()
 
+    try:
+        yield
+    finally:
+        # Действия при завершении сервиса
+        deregister_from_consul()
 
-@app.on_event("shutdown")
-def shutdown_event():
-    deregister_from_consul()
+
+app = FastAPI(
+    title="Order Service",
+    description="REST API для управления заказами и реализации Saga",
+    version="1.0.0",
+    lifespan=lifespan
+)
 
 
 @app.get(
