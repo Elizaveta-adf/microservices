@@ -7,14 +7,12 @@ import payment_pb2
 import payment_pb2_grpc
 
 
-# Настройка Circuit Breaker
 breaker = pybreaker.CircuitBreaker(
     fail_max=3,
     reset_timeout=10
 )
 
 
-# Отслеживание переходов состояний
 from datetime import datetime
 
 
@@ -33,7 +31,6 @@ class CircuitBreakerListener(pybreaker.CircuitBreakerListener):
 breaker.add_listener(CircuitBreakerListener())
 
 
-# gRPC-вызов Payment Service
 def check_payment(order_id, simulate_failure=False):
 
     with grpc.insecure_channel("payment:50051") as channel:
@@ -55,7 +52,6 @@ def check_payment(order_id, simulate_failure=False):
         }
 
 
-# Fallback-функция
 def fallback():
     return {
         "transaction_id": "",
@@ -64,7 +60,6 @@ def fallback():
     }
 
 
-# Защищённый вызов
 @breaker
 def protected_payment(order_id, simulate_failure=False):
     return check_payment(order_id, simulate_failure)
@@ -77,7 +72,6 @@ def safe_payment(order_id, simulate_failure=False):
         return fallback()
 
 
-# Тестирование
 if __name__ == "__main__":
 
     print("\n1. Успешные запросы")
