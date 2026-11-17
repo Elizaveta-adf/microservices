@@ -15,7 +15,7 @@ services:
       INSTANCE_NAME: auth
       PORT: 8000
       CONSUL_URL: http://consul:8500
-      JWT_SECRET: lab-secret-key
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
     depends_on:
       - consul
 
@@ -59,8 +59,6 @@ services:
   nginx:
     image: nginx:alpine
     container_name: nginx
-    ports:
-      - "8081:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
@@ -149,3 +147,14 @@ services:
       KAFKA_SERVER: kafka:9092
     depends_on:
       - kafka
+
+  gateway:
+    build:
+      context: ./api_gateway
+    container_name: gateway
+    ports:
+      - "8081:3000"
+    environment:
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+    depends_on:
+      - nginx

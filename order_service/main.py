@@ -2,7 +2,8 @@
 import threading
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi.security import HTTPBearer
 from pydantic import BaseModel, Field
 
 from event_store import get_events
@@ -39,13 +40,31 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Order Service — CQRS + Event Sourcing",
-    lifespan=lifespan
+    lifespan=lifespan,
+    docs_url="/orders/docs",
+    openapi_url="/orders/openapi.json"
 )
 
+bearer_scheme = HTTPBearer(auto_error=False)
 
-@app.post("/orders", status_code=201)
-def create_order_endpoint(order_data: CreateOrder):
+
+@app.post(
+    "/orders",
+    status_code=201,
+    dependencies=[Depends(bearer_scheme)]
+)
+def create_order_endpoint(
+    order_data: CreateOrder,
+    x_user_role: str = Header(default="", alias="X-User-Role")
+):
     global next_order_id
+
+    # Создавать заказ могут user и admin
+    if x_user_role not in ("user", "admin"):
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: authentication required"
+        )
 
     order_id = next_order_id
     next_order_id += 1
@@ -63,6 +82,7 @@ def create_order_endpoint(order_data: CreateOrder):
         }
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
+
 
 
 @app.post("/orders/{order_id}/pay")

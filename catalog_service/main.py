@@ -1,20 +1,13 @@
 
 import os
 import time
+from contextlib import asynccontextmanager
 
 import requests
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Header, Depends
+from fastapi.security import HTTPBearer
 from pydantic import BaseModel, Field
 
-
-app = FastAPI(
-    title="Catalog Service",
-    description="REST API каталога товаров с пагинацией",
-    version="1.0.0",
-    openapi_version="3.1.0",
-    docs_url="/docs",
-    root_path="/catalog"
-)
 
 INSTANCE_NAME = os.getenv("INSTANCE_NAME", "catalog")
 PORT = int(os.getenv("PORT", "8000"))
@@ -40,6 +33,7 @@ class Product(BaseModel):
     )
 
 
+# Регистрация сервиса в Consul
 def register_in_consul():
     payload = {
         "Name": "catalog",
@@ -76,15 +70,23 @@ def deregister_from_consul():
         print(f"Could not deregister from Consul: {error}")
 
 
-@app.on_event("startup")
-def startup_event():
+# Запуск и остановка сервиса
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     register_in_consul()
-
-
-@app.on_event("shutdown")
-def shutdown_event():
+    yield
     deregister_from_consul()
 
+
+app = FastAPI(
+    title="Catalog Service",
+    description="REST API каталога товаров с пагинацией",
+    version="1.0.0",
+    docs_url="/docs",
+    lifespan=lifespan
+)
+
+bearer_scheme = HTTPBearer(auto_error=False)
 
 # Старый endpoint из ЛР2
 @app.get("/products", include_in_schema=False)
@@ -104,7 +106,12 @@ def get_products():
 )
 def get_products_paginated(
     page: int = Query(1, ge=1, description="Номер страницы"),
-    size: int = Query(10, ge=1, le=100, description="Количество товаров на странице")
+    size: int = Query(
+        10,
+        ge=1,
+        le=100,
+        description="Количество товаров на странице"
+    )
 ):
     all_products = list(products.values())
     total = len(all_products)
@@ -141,14 +148,25 @@ def get_product_by_id(product_id: int):
     }
 
 
-# CRUD из ЛР2
+# Создание товара — только admin
 @app.post(
     "/products",
     tags=["Catalog"],
-    summary="Создание товара"
+    summary="Создание товара",
+    dependencies=[Depends(bearer_scheme)]
 )
-def create_product(product: Product):
+
+def create_product(
+    product: Product,
+    x_user_role: str = Header(default="", alias="X-User-Role")
+):
     global next_id
+
+    if x_user_role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: admin only"
+        )
 
     product_data = {
         "id": next_id,
@@ -165,6 +183,7 @@ def create_product(product: Product):
     }
 
 
+# Изменение товара — сохранено из ЛР2
 @app.put(
     "/products/{product_id}",
     tags=["Catalog"],
@@ -189,12 +208,24 @@ def update_product(product_id: int, product: Product):
     }
 
 
+# Удаление товара — только admin
 @app.delete(
     "/products/{product_id}",
     tags=["Catalog"],
-    summary="Удаление товара"
+    summary="Удаление товара",
+    dependencies=[Depends(bearer_scheme)]
 )
-def delete_product(product_id: int):
+
+def delete_product(
+    product_id: int,
+    x_user_role: str = Header(default="", alias="X-User-Role")
+):
+    if x_user_role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: admin only"
+        )
+
     if product_id not in products:
         raise HTTPException(
             status_code=404,
