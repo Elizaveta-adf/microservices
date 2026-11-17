@@ -1,0 +1,16 @@
+
+{
+  "name": "lab7-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "node main.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "express-rate-limit": "^8.0.1",
+    "http-proxy-middleware": "^3.0.5"
+  }
+}
