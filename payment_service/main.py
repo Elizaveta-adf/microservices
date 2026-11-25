@@ -4,9 +4,25 @@ import time
 import uuid
 import threading
 from grpc_server import serve
+from json_logger import log_event
 
 import pika
 
+from tracing import setup_tracing
+from opentelemetry import propagate
+from opentelemetry.trace import SpanKind
+
+tracer = setup_tracing("payment")
+from prometheus_client import Counter, start_http_server
+
+PAYMENTS = Counter(
+    "payments_total",
+    "Total processed payments",
+    ["status"]
+)
+
+PAYMENTS.labels(status="success")
+PAYMENTS.labels(status="failed")
 
 RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
 EXCHANGE_NAME = "saga_events"
@@ -14,40 +30,82 @@ QUEUE_NAME = "payment_order_created"
 
 
 def process_order(channel, method, properties, body):
-    event = json.loads(body)
-    data = event["data"]
-    order_id = data["order_id"]
+    carrier = properties.headers or {}
+    parent_context = propagate.extract(carrier)
 
-    print(f"Received OrderCreated: order_id={order_id}", flush=True)
+    with tracer.start_as_current_span(
+        "Process OrderCreated",
+        context=parent_context,
+        kind=SpanKind.CONSUMER
+    ) as span:
 
-    if order_id % 2 == 1:
-        event_type = "PaymentCompleted"
-        result = {
-            "order_id": order_id,
-            "transaction_id": str(uuid.uuid4())
+        event = json.loads(body)
+        data = event["data"]
+        order_id = data["order_id"]
+
+        span.set_attribute("order.id", order_id)
+        span.set_attribute("messaging.system", "rabbitmq")
+
+        log_event(
+            "payment",
+            "INFO",
+            "Received OrderCreated",
+            order_id=order_id
+        )
+
+        if order_id % 2 == 1:
+            event_type = "PaymentCompleted"
+
+            result = {
+                "order_id": order_id,
+                "transaction_id": str(uuid.uuid4())
+            }
+        else:
+            event_type = "PaymentFailed"
+
+            result = {
+                "order_id": order_id,
+                "reason": "Payment declined (test scenario)"
+            }
+
+        message = {
+            "event_type": event_type,
+            "data": result
         }
-    else:
-        event_type = "PaymentFailed"
-        result = {
-            "order_id": order_id,
-            "reason": "Payment declined (test scenario)"
-        }
 
-    message = {
-        "event_type": event_type,
-        "data": result
-    }
+        with tracer.start_as_current_span(
+            "RabbitMQ publish " + event_type,
+            kind=SpanKind.PRODUCER
+        ):
+            outgoing_headers = {}
+            propagate.inject(outgoing_headers)
 
-    channel.basic_publish(
-        exchange=EXCHANGE_NAME,
-        routing_key=event_type,
-        body=json.dumps(message),
-        properties=pika.BasicProperties(delivery_mode=2)
-    )
+            channel.basic_publish(
+                exchange=EXCHANGE_NAME,
+                routing_key=event_type,
+                body=json.dumps(message),
+                properties=pika.BasicProperties(
+                    delivery_mode=2,
+                    headers=outgoing_headers
+                )
+            )
 
-    print(f"Published {event_type}: {result}", flush=True)
+            log_event(
+                "payment",
+                "INFO" if event_type == "PaymentCompleted" else "ERROR",
+                "Published " + event_type,
+                event_type=event_type,
+                order_id=order_id
+            )
+        PAYMENTS.labels(
+            status="success"
+            if event_type == "PaymentCompleted"
+            else "failed"
+        ).inc()
 
-    channel.basic_ack(delivery_tag=method.delivery_tag)
+        channel.basic_ack(
+            delivery_tag=method.delivery_tag
+        )
 
 
 def main():
@@ -87,11 +145,16 @@ def main():
         on_message_callback=process_order
     )
 
-    print("Payment Service is waiting for OrderCreated...", flush=True)
+    log_event(
+        "payment",
+        "INFO",
+        "Payment Service is waiting for OrderCreated"
+    )
 
     channel.start_consuming()
 
 
 if __name__ == "__main__":
+    start_http_server(8001)
     threading.Thread(target=serve, daemon=True).start()
     main()

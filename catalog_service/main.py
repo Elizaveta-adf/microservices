@@ -238,3 +238,19 @@ def delete_product(
         "instance_id": INSTANCE_NAME,
         "deleted": deleted_product
     }
+
+
+# ЛР8. Структурированное логирование
+from json_logger import setup_http_logs
+
+setup_http_logs(app, "catalog")
+
+from tracing import setup_tracing
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+tracer = setup_tracing("catalog")
+FastAPIInstrumentor.instrument_app(app)
+
+from metrics import setup_metrics
+
+setup_metrics(app, "catalog")

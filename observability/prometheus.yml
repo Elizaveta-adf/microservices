@@ -1,0 +1,32 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["prometheus:9090"]
+
+  - job_name: auth
+    static_configs:
+      - targets: ["auth:8000"]
+
+  - job_name: catalog
+    static_configs:
+      - targets: ["catalog-1:8000", "catalog-2:8000"]
+
+  - job_name: orders
+    static_configs:
+      - targets: ["orders:8000"]
+
+  - job_name: gateway
+    static_configs:
+      - targets: ["gateway:3000"]
+
+  - job_name: payment
+    static_configs:
+      - targets: ["payment:8001"]
+
+  - job_name: notification
+    static_configs:
+      - targets: ["notification:8001"]
