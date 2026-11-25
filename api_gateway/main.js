@@ -1,10 +1,43 @@
+require("./tracing");
 
+const { trace } = require("@opentelemetry/api");
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const { rateLimit } = require("express-rate-limit");
 const { createProxyMiddleware } = require("http-proxy-middleware");
 
 const app = express();
+
+const { setupMetrics } = require("./metrics");
+
+setupMetrics(app);
+
+// ЛР8. Структурированное логирование
+app.use((req, res, next) => {
+    const start = process.hrtime.bigint();
+    const traceId = trace.getActiveSpan()
+        ?.spanContext().traceId || "";
+
+    res.on("finish", () => {
+        const duration = Number(
+            process.hrtime.bigint() - start
+        ) / 1e9;
+
+        console.log(JSON.stringify({
+            timestamp: new Date().toISOString(),
+            service_name: "api_gateway",
+            level: res.statusCode >= 400 ? "ERROR" : "INFO",
+            trace_id: traceId,
+            message: "HTTP request",
+            method: req.method,
+            endpoint: req.path,
+            status: res.statusCode,
+            duration_seconds: Number(duration.toFixed(3))
+        }));
+    });
+
+    next();
+});
 const JWT_SECRET = process.env.JWT_SECRET;
 
 if (!JWT_SECRET) {

@@ -213,3 +213,18 @@ def me(authorization: str = Header(None)):
             status_code=401,
             detail="Invalid token"
         )
+
+# ЛР8. Структурированное логирование
+from json_logger import setup_http_logs
+
+setup_http_logs(app, "auth")
+
+from tracing import setup_tracing
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+tracer = setup_tracing("auth")
+FastAPIInstrumentor.instrument_app(app)
+
+from metrics import setup_metrics
+
+setup_metrics(app, "auth")

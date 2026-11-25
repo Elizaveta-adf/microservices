@@ -11,7 +11,24 @@ from order_aggregate import rehydrate
 from order_commands import create_order, pay_order, cancel_order
 from order_projection import get_order_projection, get_all_projections
 from order_consumer import consume_order_events
+from rabbitmq_bridge import consume_bridge_events
 
+from prometheus_client import Counter
+
+ORDERS_CREATED = Counter(
+    "orders_created_total",
+    "Total created orders"
+)
+
+ORDERS_AMOUNT = Counter(
+    "orders_amount_total",
+    "Total amount of created orders"
+)
+
+ORDERS_CANCELLED = Counter(
+    "orders_cancelled_total",
+    "Total cancelled orders"
+)
 
 class OrderItem(BaseModel):
     product_id: int = Field(gt=0)
@@ -34,6 +51,12 @@ async def lifespan(app: FastAPI):
         daemon=True
     )
     consumer_thread.start()
+
+    bridge_thread = threading.Thread(
+        target=consume_bridge_events,
+        daemon=True
+    )
+    bridge_thread.start()
 
     yield
 
@@ -76,6 +99,8 @@ def create_order_endpoint(
             items=[item.model_dump() for item in order_data.items],
             amount=order_data.amount
         )
+        ORDERS_CREATED.inc()
+        ORDERS_AMOUNT.inc(order_data.amount)
         return {
             "order_id": order_id,
             "event": event
@@ -98,6 +123,7 @@ def pay_order_endpoint(order_id: int):
 def cancel_order_endpoint(order_id: int):
     try:
         event = cancel_order(order_id)
+        ORDERS_CANCELLED.inc()
         return {"event": event}
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
@@ -127,3 +153,19 @@ def get_order(order_id: int):
         )
 
     return order
+
+
+# ЛР8. Структурированное логирование
+from json_logger import setup_http_logs
+
+setup_http_logs(app, "orders")
+
+from tracing import setup_tracing
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+tracer = setup_tracing("orders")
+FastAPIInstrumentor.instrument_app(app)
+
+from metrics import setup_metrics
+
+setup_metrics(app, "orders")
