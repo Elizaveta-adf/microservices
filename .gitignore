@@ -6,3 +6,8 @@ venv/
 .idea/
 .vscode/
 .DS_Store
+
+tests/load-results.json
+tests/load-failover.json
+tests/load-events.ndjson
+tests/load-report.html

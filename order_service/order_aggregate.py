@@ -13,7 +13,7 @@ def apply(state, event):
         }
 
     elif event_type == "OrderPaid":
-        state["status"] = "PAID"
+        state["status"] = "CONFIRMED"
 
     elif event_type == "OrderCancelled":
         state["status"] = "CANCELLED"

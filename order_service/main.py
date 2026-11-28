@@ -12,8 +12,11 @@ from order_commands import create_order, pay_order, cancel_order
 from order_projection import get_order_projection, get_all_projections
 from order_consumer import consume_order_events
 from rabbitmq_bridge import consume_bridge_events
+from payment_consumer import consume_payment_results
 
 from prometheus_client import Counter
+from uuid import UUID
+from pydantic import PositiveInt
 
 ORDERS_CREATED = Counter(
     "orders_created_total",
@@ -36,7 +39,7 @@ class OrderItem(BaseModel):
 
 
 class CreateOrder(BaseModel):
-    user_id: int = Field(gt=0)
+    user_id: PositiveInt | UUID
     items: list[OrderItem] = Field(min_length=1)
     amount: float = Field(gt=0)
 
@@ -58,8 +61,14 @@ async def lifespan(app: FastAPI):
     )
     bridge_thread.start()
 
-    yield
+    payment_thread = threading.Thread(
+        target=consume_payment_results,
+        args=(ORDERS_CANCELLED.inc,),
+        daemon=True
+    )
+    payment_thread.start()
 
+    yield
 
 app = FastAPI(
     title="Order Service — CQRS + Event Sourcing",
@@ -95,7 +104,7 @@ def create_order_endpoint(
     try:
         event = create_order(
             order_id=order_id,
-            user_id=order_data.user_id,
+            user_id=order_data.model_dump(mode="json")["user_id"],
             items=[item.model_dump() for item in order_data.items],
             amount=order_data.amount
         )
@@ -135,10 +144,10 @@ def get_orders():
 
 
 @app.get("/orders/user/{user_id}")
-def get_user_orders(user_id: int):
+def get_user_orders(user_id: PositiveInt | UUID):
     return [
         order for order in get_all_projections()
-        if order["user_id"] == user_id
+        if str(order["user_id"]) == str(user_id)
     ]
 
 

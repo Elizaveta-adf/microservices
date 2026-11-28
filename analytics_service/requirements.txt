@@ -1,3 +1,7 @@
 fastapi
 uvicorn[standard]
 kafka-python
+opentelemetry-api==1.28.2
+opentelemetry-sdk==1.28.2
+opentelemetry-exporter-otlp-proto-http==1.28.2
+opentelemetry-instrumentation-fastapi==0.49b2

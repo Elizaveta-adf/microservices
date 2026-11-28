@@ -47,7 +47,7 @@ if (!JWT_SECRET) {
 // Общий лимит: 100 запросов за 15 минут
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: 100,
+    limit: Number(process.env.RATE_LIMIT_MAX || 100),
     legacyHeaders: true,
     standardHeaders: false
 });
@@ -55,7 +55,7 @@ const limiter = rateLimit({
 // Для логина: 5 попыток за 15 минут
 const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: 5,
+    limit: Number(process.env.LOGIN_RATE_LIMIT_MAX || 5),
     legacyHeaders: true,
     standardHeaders: false
 });
