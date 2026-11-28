@@ -7,6 +7,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from kafka import KafkaConsumer
+from tracing import setup_tracing
+from opentelemetry import propagate
+from opentelemetry.trace import SpanKind
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+tracer = setup_tracing("analytics")
 
 
 KAFKA_SERVER = os.getenv("KAFKA_SERVER", "kafka:9092")
@@ -38,7 +44,7 @@ def process_event(event):
 
         elif event_type == "OrderPaid":
             if current and version == current["version"] + 1:
-                current["status"] = "PAID"
+                current["status"] = "CONFIRMED"
                 current["version"] = version
 
         elif event_type == "OrderCancelled":
@@ -64,11 +70,35 @@ def consume_events():
             print("Analytics consumer started", flush=True)
 
             for message in consumer:
-                process_event(message.value)
-                print(
-                    f"Analytics event: {message.value['eventType']}",
-                    flush=True
-                )
+                carrier = {
+                    key: value.decode("utf-8")
+                    for key, value in (message.headers or [])
+                    if value is not None
+                }
+
+                context = propagate.extract(carrier)
+                event = message.value
+
+                with tracer.start_as_current_span(
+                    "Kafka consume " + event["eventType"],
+                    context=context,
+                    kind=SpanKind.CONSUMER
+                ) as span:
+
+                    span.set_attribute(
+                        "messaging.system", "kafka"
+                    )
+
+                    span.set_attribute(
+                        "order.id", event["orderId"]
+                    )
+
+                    process_event(event)
+
+                    print(
+                        f"Analytics event: {event['eventType']}",
+                        flush=True
+                    )
 
         except Exception as error:
             print(f"Analytics consumer error: {error}", flush=True)
@@ -99,12 +129,12 @@ def get_summary():
         paid_amount = sum(
             order["amount"]
             for order in orders.values()
-            if order["status"] == "PAID"
+            if order["status"] == "CONFIRMED"
         )
 
         status_counts = {
             "CREATED": 0,
-            "PAID": 0,
+            "CONFIRMED": 0,
             "CANCELLED": 0
         }
 
@@ -127,3 +157,5 @@ def get_summary():
             "status_counts": status_counts,
             "average_amount": average_amount
         }
+
+FastAPIInstrumentor.instrument_app(app)

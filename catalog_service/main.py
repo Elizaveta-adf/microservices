@@ -14,8 +14,13 @@ PORT = int(os.getenv("PORT", "8000"))
 CONSUL_URL = os.getenv("CONSUL_URL", "http://consul:8500")
 
 # In-memory хранилище товаров
-products = {}
-next_id = 1
+products = {
+    1: {"id": 1, "name": "Laptop", "price": 50000.0},
+    2: {"id": 2, "name": "Mouse", "price": 1500.0},
+    3: {"id": 3, "name": "Keyboard", "price": 3500.0}
+}
+
+next_id = 4
 
 
 class Product(BaseModel):

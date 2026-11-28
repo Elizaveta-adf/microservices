@@ -29,7 +29,7 @@ def apply_projection(event):
 
         elif event_type == "OrderPaid":
             if current and version == current["version"] + 1:
-                current["status"] = "PAID"
+                current["status"] = "CONFIRMED"
                 current["version"] = version
 
         elif event_type == "OrderCancelled":
